@@ -51,6 +51,7 @@ BT::NodeStatus SelectVisionTargetPathAction::tick()
   auto path = decision::buildPathFromIndices(goal_points_, {index});
 
   setOutput("selected_index", selected_index);
+  setOutput("goal_succeeded", false);
   setOutput("path", path);
   return BT::NodeStatus::SUCCESS;
 }
@@ -65,6 +66,9 @@ BT::PortsList SelectVisionTargetPathAction::providedPorts()
       "Fallback goal index when vision does not provide a valid goal"),
     BT::OutputPort<int>(
       "selected_index", "{vision_selected_goal_index}", "Final selected vision goal index"),
+    BT::OutputPort<bool>(
+      "goal_succeeded", "{decision_nav_goal_succeeded}",
+      "Reset the completed-path latch before evaluating the new vision path"),
     BT::OutputPort<nav_msgs::msg::Path>("path", "{decision_path}", "Vision support path")};
 }
 
