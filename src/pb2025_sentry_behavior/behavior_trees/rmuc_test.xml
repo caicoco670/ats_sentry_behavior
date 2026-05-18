@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+
+  <!--
+    ============================================================
+    check_game_start: 等待比赛开始 (复用 rmul_2026)
+    ============================================================
+  -->
+  <BehaviorTree ID="check_game_start">
+    <Fallback>
+      <IsGameStatus name="IsGameStart"
+                    max_remain_time="{@decision_game_start_max_remain_time}"
+                    min_remain_time="{@decision_game_start_min_remain_time}"
+                    expected_game_progress="{@decision_game_start_expected_progress}"
+                    key_port="{@referee_gameStatus}"/>
+      <ForceFailure>
+        <Sequence>
+          <PublishSpinSpeed spin_speed="0.0"
+                            duration="0.0"
+                            topic_name="{@decision_spin_topic}"/>
+          <PublishTwist v_y="0.0"
+                        v_yaw="0.0"
+                        v_x="0.0"
+                        duration="0.0"
+                        topic_name="{@decision_cmd_vel_topic}"/>
+        </Sequence>
+      </ForceFailure>
+    </Fallback>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    decision_rmuc_supply: 回补给点补血
+    从 YAML 参数 decision.rmuc.supply_point 读取坐标
+    → 生成单点 Path → 导航过去
+    ============================================================
+  -->
+  <BehaviorTree ID="decision_rmuc_supply">
+    <Sequence>
+      <SelectSupplyPoint path="{decision_csv_path}"/>
+      <Fallback>
+        <Sequence>
+          <IsPathGoalReached path="{decision_csv_path}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"
+                             current_pose="{@decision_current_pose}"/>
+        </Sequence>
+        <SendNavThroughPoses path="{decision_csv_path}"
+                             current_pose="{@decision_current_pose}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    decision_rmuc_csv_nav: 主导航阶段
+    LoadCsvWaypoints 带缓存，同一个 CSV 文件只在首次 tick 解析
+    → SendNavThroughPoses 异步导航
+    → 到达终点后 SetCsvPhaseComplete 标记阶段完成
+    ============================================================
+  -->
+  <BehaviorTree ID="decision_rmuc_csv_nav">
+    <Sequence>
+      <LoadCsvWaypoints csv_file="{@decision_rmuc_csv_file}"
+                        path="{decision_csv_path}"/>
+      <Fallback>
+        <Sequence>
+          <IsPathGoalReached path="{decision_csv_path}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"
+                             current_pose="{@decision_current_pose}"/>
+          <SetCsvPhaseComplete csv_phase_complete="{decision_rmuc_csv_phase_complete}"/>
+        </Sequence>
+        <SendNavThroughPoses path="{decision_csv_path}"
+                             current_pose="{@decision_current_pose}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    decision_rmuc_patrol_nav: 己方半区巡逻
+    从巡逻 CSV 加载路点 → 单次导航通过 → 到达后停在终点
+    ============================================================
+  -->
+  <BehaviorTree ID="decision_rmuc_patrol_nav">
+    <Sequence>
+      <LoadCsvWaypoints csv_file="{@decision_rmuc_patrol_csv_file}"
+                        path="{decision_csv_path}"/>
+      <Fallback>
+        <Sequence>
+          <IsPathGoalReached path="{decision_csv_path}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"
+                             current_pose="{@decision_current_pose}"/>
+        </Sequence>
+        <SendNavThroughPoses path="{decision_csv_path}"
+                             current_pose="{@decision_current_pose}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    decision_rmuc_referee: 裁判系统自主决策核心
+
+    优先级 (ReactiveFallback, 高→低):
+      P0: HP < retreat_hp_threshold → 去补给点 (最高优先级, 随时打断)
+      P1: CSV阶段完成 AND (剩余<=180s OR 前哨站被推) → 半区巡逻
+      P2: CSV阶段完成 AND 条件不满足 → 原地待命
+      P3: CSV阶段未完成 → 主导航
+
+    ReactiveSequence 保证每个 tick 都重新检查 check_game_start
+    ReactiveFallback 保证条件变化时立即切换行为
+    ============================================================
+  -->
+  <BehaviorTree ID="decision_rmuc_referee">
+    <ReactiveSequence>
+      <SubTree ID="check_game_start"/>
+      <ReactiveFallback>
+        <!-- P0: 血量低于阈值 → 回补给点 -->
+        <Sequence>
+          <IsHpLessThan robot_status="{@referee_robotStatus}"
+                        threshold="{@decision_rmuc_retreat_hp_threshold}"/>
+          <SubTree ID="decision_rmuc_supply"/>
+        </Sequence>
+
+        <!-- P1: CSV完成 AND (剩余时间<=3min OR 前哨站被推) → 半区巡逻 -->
+        <Sequence>
+          <IsCsvPhaseComplete csv_phase_complete="{decision_rmuc_csv_phase_complete}"/>
+          <Fallback>
+            <IsRemainTimeLessThan key_port="{@referee_gameStatus}"
+                                  threshold="{@decision_rmuc_endgame_time_threshold}"/>
+            <IsFriendlyOutpostDestroyed all_robot_hp="{@referee_allRobotHP}"
+                                        robot_status="{@referee_robotStatus}"/>
+          </Fallback>
+          <SubTree ID="decision_rmuc_patrol_nav"/>
+        </Sequence>
+
+        <!-- P2: CSV完成 AND 条件不满足 → 原地待命 -->
+        <Sequence>
+          <IsCsvPhaseComplete csv_phase_complete="{decision_rmuc_csv_phase_complete}"/>
+          <PublishTwist v_x="0.0"
+                        v_y="0.0"
+                        v_yaw="0.0"
+                        duration="0.0"
+                        topic_name="{@decision_cmd_vel_topic}"/>
+        </Sequence>
+
+        <!-- P3: CSV未完成 → 主导航 -->
+        <SubTree ID="decision_rmuc_csv_nav"/>
+      </ReactiveFallback>
+    </ReactiveSequence>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    rmuc_test: 根行为树
+
+    运行机制:
+      KeepRunningUntilFailure + ForceSuccess = 永不停止
+      每个 tick: 自旋 + 根据 input_source 选决策分支
+
+    决策来源:
+      - simulation: decision_simulation (复用 rmul_2026)
+      - referee:    decision_rmuc_referee (本树自定义)
+    ============================================================
+  -->
+  <BehaviorTree ID="rmuc_test">
+    <KeepRunningUntilFailure>
+      <ForceSuccess>
+        <ReactiveSequence>
+          <PublishSpinSpeed spin_speed="{@decision_default_spin_speed}"
+                            duration="0.0"
+                            topic_name="{@decision_spin_topic}"/>
+          <ReactiveFallback>
+            <Sequence>
+              <IsDecisionInputSource source="simulation"/>
+              <SubTree ID="decision_simulation"/>
+            </Sequence>
+
+            <Sequence>
+              <IsDecisionInputSource source="referee"/>
+              <SubTree ID="decision_rmuc_referee"/>
+            </Sequence>
+          </ReactiveFallback>
+        </ReactiveSequence>
+      </ForceSuccess>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+</root>

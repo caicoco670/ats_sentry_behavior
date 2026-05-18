@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root BTCPP_format="4">
+
+  <!--
+    ============================================================
+    check_game_start: 等待比赛开始的看门狗
+    - 如果比赛已开始 (game_progress==4 且剩余时间在范围内) → SUCCESS，放行后续行为
+    - 如果比赛未开始 → FAILURE，进入 ForceFailure 分支
+    - ForceFailure(Sequence(停转+停止)) → 先让机器人不动，再返回 FAILURE
+      这样外层看到 FAILURE 就会一直等在这里，不会进入实际行为
+    ============================================================
+  -->
   <BehaviorTree ID="check_game_start">
     <Fallback>
+      <!-- 条件: 比赛是否处于"进行中"阶段? -->
       <IsGameStatus name="IsGameStart"
                     max_remain_time="{@decision_game_start_max_remain_time}"
                     min_remain_time="{@decision_game_start_min_remain_time}"
                     expected_game_progress="{@decision_game_start_expected_progress}"
                     key_port="{@referee_gameStatus}"/>
+      <!-- 比赛没开始 → 停止所有运动，并返回 FAILURE 阻塞后续 -->
       <ForceFailure>
         <Sequence>
           <PublishSpinSpeed spin_speed="0.0"
@@ -22,17 +34,27 @@
     </Fallback>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_safe_point: 前往安全补给点
+    步骤: 清理低血量目标标记 → 选择固定路径(补给点) → 导航过去
+    ============================================================
+  -->
   <BehaviorTree ID="decision_safe_point">
     <Sequence>
+      <!-- 复位: 清除上一次的低血量目标记录 (-1 表示无目标) -->
       <ResetLowHpTarget selected_index="{@decision_low_hp_target_index}"/>
+      <!-- 选路: 根据 supply_safe_point_index 生成一条路径 -->
       <SelectFixedPath target_index="{@decision_supply_safe_point_index}"
                        path="{decision_path}"/>
       <Fallback>
+        <!-- 情况A: 已经到达目标点? → SUCCESS，触发上层重新决策 -->
         <Sequence>
           <IsPathGoalReached path="{decision_path}"
                              goal_succeeded="{decision_nav_goal_succeeded}"
                              current_pose="{@decision_current_pose}"/>
         </Sequence>
+        <!-- 情况B: 还没到 → 发送导航指令，返回 RUNNING(异步等待到达) -->
         <SendNavThroughPoses path="{decision_path}"
                              current_pose="{@decision_current_pose}"
                              goal_succeeded="{decision_nav_goal_succeeded}"/>
@@ -40,18 +62,29 @@
     </Sequence>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_retreat: 低血量撤退
+    步骤: 选择最近的安全撤离点 → 导航过去
+    与 safe_point 的区别: 目标点是动态选的(距离当前位置最近的低血量候选点)
+    到达后清除目标标记，让上层可以重新决策
+    ============================================================
+  -->
   <BehaviorTree ID="decision_retreat">
     <Sequence>
+      <!-- 选路: 从 low_hp_candidate_indices 中选距离当前位姿最近的点 -->
       <SelectNearestRetreatPath current_pose="{@decision_current_pose}"
                                 selected_index="{@decision_low_hp_target_index}"
                                 path="{decision_path}"/>
       <Fallback>
+        <!-- 到达了 → 清除低血量标记，通知上层"撤退完成" -->
         <Sequence>
           <IsPathGoalReached path="{decision_path}"
                              goal_succeeded="{decision_nav_goal_succeeded}"
                              current_pose="{@decision_current_pose}"/>
           <ResetLowHpTarget selected_index="{@decision_low_hp_target_index}"/>
         </Sequence>
+        <!-- 还没到 → 继续导航 -->
         <SendNavThroughPoses path="{decision_path}"
                              current_pose="{@decision_current_pose}"
                              goal_succeeded="{decision_nav_goal_succeeded}"/>
@@ -59,6 +92,13 @@
     </Sequence>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_critical_time_target: 比赛末段冲向关键目标点
+    触发条件: 比赛剩余时间 ≤ 40s (critical 阶段) 且 HP 正常
+    目的: 最后时刻抢占有利位置
+    ============================================================
+  -->
   <BehaviorTree ID="decision_critical_time_target">
     <Sequence>
       <ResetLowHpTarget selected_index="{@decision_low_hp_target_index}"/>
@@ -77,6 +117,12 @@
     </Sequence>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_anchor_target: 前往锚点(固定防守点位)
+    仅在仿真模式中被使用 (通过 decision_simulation 调用)
+    ============================================================
+  -->
   <BehaviorTree ID="decision_anchor_target">
     <Sequence>
       <ResetLowHpTarget selected_index="{@decision_low_hp_target_index}"/>
@@ -95,15 +141,26 @@
     </Sequence>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_patrol: 巡逻模式(默认行为)
+    步骤: 根据巡逻游标(cursor+direction)生成下一段巡逻路径 → 导航 →
+          到达后推进游标(在巡逻点间来回折返)
+    巡逻点的折返逻辑: cursor 走到尽头时 direction 翻转,
+    例如 [点1, 点2, 点3] 的移动顺序是 1→2→3→2→1→2→3...
+    ============================================================
+  -->
   <BehaviorTree ID="decision_patrol">
     <Sequence>
       <ResetLowHpTarget selected_index="{@decision_low_hp_target_index}"/>
+      <!-- 根据当前游标位置和方向算出下一段路径 -->
       <SelectPatrolPath patrol_cursor="{decision_patrol_cursor}"
                         patrol_direction="{decision_patrol_direction}"
                         path="{decision_path}"
                         next_cursor="{decision_next_patrol_cursor}"
                         next_direction="{decision_next_patrol_direction}"/>
       <Fallback>
+        <!-- 到达当前巡逻点 → 推进游标到下一个位置 -->
         <Sequence>
           <IsPathGoalReached path="{decision_path}"
                              goal_succeeded="{decision_nav_goal_succeeded}"
@@ -114,6 +171,7 @@
                                patrol_direction="{decision_patrol_direction}"
                                goal_succeeded="{decision_nav_goal_succeeded}"/>
         </Sequence>
+        <!-- 还没到 → 继续导航 -->
         <SendNavThroughPoses path="{decision_path}"
                              current_pose="{@decision_current_pose}"
                              goal_succeeded="{decision_nav_goal_succeeded}"/>
@@ -121,52 +179,92 @@
     </Sequence>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_simulation: 仿真模式的顶层决策
+    不使用裁判系统数据，由外部通过 ROS topic 直接下发行为指令
+    优先级: safe > retreat > anchor > patrol(默认兜底)
+
+    ReactiveFallback 的作用: 每次 tick 都会重新检查前面的条件,
+    一旦 mode 切换, 立即中断当前行为
+    ============================================================
+  -->
   <BehaviorTree ID="decision_simulation">
     <ReactiveFallback>
+      <!-- 优先级1: 外部下发 "safe" → 去补给点 -->
       <Sequence>
         <IsDecisionMode mode="safe"/>
         <SubTree ID="decision_safe_point"/>
       </Sequence>
 
+      <!-- 优先级2: 外部下发 "retreat" → 撤退 -->
       <Sequence>
         <IsDecisionMode mode="retreat"/>
         <SubTree ID="decision_retreat"/>
       </Sequence>
 
+      <!-- 优先级3: 外部下发 "anchor" → 去锚点 -->
       <Sequence>
         <IsDecisionMode mode="anchor"/>
         <SubTree ID="decision_anchor_target"/>
       </Sequence>
 
+      <!-- 优先级4: 外部下发 "patrol" → 巡逻 -->
       <Sequence>
         <IsDecisionMode mode="patrol"/>
         <SubTree ID="decision_patrol"/>
       </Sequence>
 
+      <!-- 兜底: 无论 mode 是什么, 默认巡逻 -->
       <SubTree ID="decision_patrol"/>
     </ReactiveFallback>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    decision_referee: 裁判系统模式的顶层决策
+    使用裁判系统实时数据 (GameStatus + RobotStatus) 自主决策
+
+    决策优先级:
+      1. HP == critical (危险) → 去补给点保命
+      2. HP == low      (偏低) → 撤退
+      3. 时间==critical + HP正常  → 最后时刻抢占关键点位
+      4. HP == normal   (正常) → 巡逻
+
+    HP 分级是动态的: 同样数值在不同比赛阶段可能被判定为不同等级
+    例如同样的 200 HP, 在"充裕"阶段是 normal,
+    在"关键"阶段可能被判定为 low (阈值随阶段收紧)
+
+    ReactiveSequence: 每个 tick 都重新检查 check_game_start,
+    确保比赛未开始时不会执行任何行为
+    ============================================================
+  -->
   <BehaviorTree ID="decision_referee">
     <ReactiveSequence>
+      <!-- 第一步: 比赛是否开始? 未开始则在这里阻塞 -->
       <SubTree ID="check_game_start"/>
+      <!-- 第二步: 根据 HP + 时间阶段选择行为 (按优先级) -->
       <ReactiveFallback>
+        <!-- 优先级1: 血量见底 → 保命, 冲向补给点 -->
         <Sequence>
           <IsHpBand band="critical"/>
           <SubTree ID="decision_safe_point"/>
         </Sequence>
 
+        <!-- 优先级2: 血量偏低 → 撤退到最近的安全点 -->
         <Sequence>
           <IsHpBand band="low"/>
           <SubTree ID="decision_retreat"/>
         </Sequence>
 
+        <!-- 优先级3: 比赛末段(≤40s)且血量充足 → 抢占关键位置 -->
         <Sequence>
           <IsGameTimeStage stage="critical"/>
           <IsHpBand band="normal"/>
           <SubTree ID="decision_critical_time_target"/>
         </Sequence>
 
+        <!-- 优先级4: 一切正常 → 巡逻 -->
         <Sequence>
           <IsHpBand band="normal"/>
           <SubTree ID="decision_patrol"/>
@@ -175,19 +273,42 @@
     </ReactiveSequence>
   </BehaviorTree>
 
+  <!--
+    ============================================================
+    rmul_2026: 根行为树 (入口)
+
+    运行机制:
+      KeepRunningUntilFailure + ForceSuccess = 永不停止的循环
+      (ForceSuccess 永远返回 SUCCESS, KeepRunning 收不到 FAILURE 就不会退出)
+
+    每个 tick (100ms) 做两件事:
+      1. PublishSpinSpeed - 持续让哨兵自旋 (7.0 rad/s), 用于视觉搜索
+      2. ReactiveFallback - 选一个决策来源执行导航行为
+
+    决策来源二选一:
+      - simulation: 外部 topic 下发指令 (手动/测试模式)
+      - referee:    裁判系统实时数据自动决策 (比赛模式)
+
+    ReactiveSequence 保证每个 tick 自旋速度都会被重新发布
+    ============================================================
+  -->
   <BehaviorTree ID="rmul_2026">
     <KeepRunningUntilFailure>
       <ForceSuccess>
         <ReactiveSequence>
+          <!-- 持续自旋: 哨兵原地旋转以进行 360° 视觉搜索 -->
           <PublishSpinSpeed spin_speed="{@decision_default_spin_speed}"
                             duration="0.0"
                             topic_name="{@decision_spin_topic}"/>
+          <!-- 根据输入来源选择决策树 -->
           <ReactiveFallback>
+            <!-- 路径A: 仿真/手动控制模式 -->
             <Sequence>
               <IsDecisionInputSource source="simulation"/>
               <SubTree ID="decision_simulation"/>
             </Sequence>
 
+            <!-- 路径B: 裁判系统自主决策模式 -->
             <Sequence>
               <IsDecisionInputSource source="referee"/>
               <SubTree ID="decision_referee"/>

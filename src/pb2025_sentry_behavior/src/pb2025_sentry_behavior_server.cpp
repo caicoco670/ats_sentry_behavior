@@ -226,6 +226,17 @@ void SentryBehaviorServer::declareDecisionParameters()
   declare_parameter("decision.decision_config.waypoint_stop_duration_s", 0.0);
   declare_parameter("decision.decision_config.patrol_preview_points", 2);
   declare_parameter("decision.decision_config.action_server_wait_timeout_s", 0.5);
+
+  // RMUC test 专用参数
+  declare_parameter(
+    "decision.rmuc.csv_waypoints_file", std::string("params/rmuc_waypoints.csv"));
+  declare_parameter(
+    "decision.rmuc.patrol_csv_file", std::string("params/rmuc_patrol_waypoints.csv"));
+  declare_parameter("decision.rmuc.retreat_hp_threshold", 150);
+  declare_parameter("decision.rmuc.endgame_time_threshold", 180);
+  declare_parameter("decision.rmuc.supply_point.x", 2.77164);
+  declare_parameter("decision.rmuc.supply_point.y", 1.40146);
+  declare_parameter("decision.rmuc.supply_point.z", 0.0);
 }
 
 void SentryBehaviorServer::initializeDecisionBlackboard()
@@ -282,6 +293,21 @@ void SentryBehaviorServer::initializeDecisionBlackboard()
   globalBlackboard()->set("decision_next_patrol_cursor", 0);
   globalBlackboard()->set("decision_next_patrol_direction", 1);
   globalBlackboard()->set("decision_low_hp_target_index", -1);
+
+  // RMUC test 黑board 初始化
+  std::string csv_waypoints_file = "params/rmuc_waypoints.csv";
+  std::string patrol_csv_file = "params/rmuc_patrol_waypoints.csv";
+  int retreat_hp_threshold = 150;
+  int endgame_time_threshold = 180;
+  node()->get_parameter("decision.rmuc.csv_waypoints_file", csv_waypoints_file);
+  node()->get_parameter("decision.rmuc.patrol_csv_file", patrol_csv_file);
+  node()->get_parameter("decision.rmuc.retreat_hp_threshold", retreat_hp_threshold);
+  node()->get_parameter("decision.rmuc.endgame_time_threshold", endgame_time_threshold);
+  globalBlackboard()->set("decision_rmuc_csv_file", csv_waypoints_file);
+  globalBlackboard()->set("decision_rmuc_patrol_csv_file", patrol_csv_file);
+  globalBlackboard()->set("decision_rmuc_retreat_hp_threshold", retreat_hp_threshold);
+  globalBlackboard()->set("decision_rmuc_endgame_time_threshold", endgame_time_threshold);
+  globalBlackboard()->set("decision_rmuc_csv_phase_complete", false);
 }
 
 bool SentryBehaviorServer::onGoalReceived(

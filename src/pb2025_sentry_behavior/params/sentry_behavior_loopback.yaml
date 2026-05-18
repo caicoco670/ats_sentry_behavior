@@ -14,7 +14,7 @@ pb2025_sentry_behavior_server:
       - pb2025_sentry_behavior/behavior_trees
 
     decision:
-      input_source: simulation
+      input_source: referee
 
       goal_points:
         x: [0.2, 5.38, 3.6, 0.0]
@@ -86,7 +86,17 @@ pb2025_sentry_behavior_server:
         patrol_preview_points: 2
         action_server_wait_timeout_s: 0.5
 
+        rmuc:
+          csv_waypoints_file: "params/rmuc_waypoints.csv"
+          patrol_csv_file: "params/rmuc_patrol_waypoints.csv"
+          retreat_hp_threshold: 150
+          endgame_time_threshold: 180
+          supply_point:
+            x: -1.708280
+            y: -6.017560
+            z: -0.000002
+
 pb2025_sentry_behavior_client:
   ros__parameters:
     use_sim_time: true
-    target_tree: rmul_2026
+    target_tree: rmuc_test

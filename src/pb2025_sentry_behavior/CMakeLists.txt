@@ -70,6 +70,27 @@ ament_auto_add_library(
   plugins/condition/is_vision_target_valid.cpp)
 list(APPEND plugin_libs is_vision_target_valid)
 
+# NEW: rmuc_test conditions
+ament_auto_add_library(
+  is_csv_phase_complete SHARED
+  plugins/condition/is_csv_phase_complete.cpp)
+list(APPEND plugin_libs is_csv_phase_complete)
+
+ament_auto_add_library(
+  is_hp_less_than SHARED
+  plugins/condition/is_hp_less_than.cpp)
+list(APPEND plugin_libs is_hp_less_than)
+
+ament_auto_add_library(
+  is_remain_time_less_than SHARED
+  plugins/condition/is_remain_time_less_than.cpp)
+list(APPEND plugin_libs is_remain_time_less_than)
+
+ament_auto_add_library(
+  is_friendly_outpost_destroyed SHARED
+  plugins/condition/is_friendly_outpost_destroyed.cpp)
+list(APPEND plugin_libs is_friendly_outpost_destroyed)
+
 ####### Actions #######
 ament_auto_add_library(send_nav2_goal SHARED plugins/action/send_nav2_goal.cpp)
 list(APPEND plugin_libs send_nav2_goal)
@@ -125,6 +146,22 @@ list(APPEND plugin_libs select_path_goal_pose)
 
 ament_auto_add_library(publish_decision_goal SHARED plugins/action/publish_decision_goal.cpp)
 list(APPEND plugin_libs publish_decision_goal)
+
+# NEW: rmuc_test actions
+ament_auto_add_library(
+  set_csv_phase_complete SHARED
+  plugins/action/set_csv_phase_complete.cpp)
+list(APPEND plugin_libs set_csv_phase_complete)
+
+ament_auto_add_library(
+  load_csv_waypoints SHARED
+  plugins/action/load_csv_waypoints.cpp)
+list(APPEND plugin_libs load_csv_waypoints)
+
+ament_auto_add_library(
+  select_supply_point SHARED
+  plugins/action/select_supply_point.cpp)
+list(APPEND plugin_libs select_supply_point)
 
 ####### Controls #######
 ament_auto_add_library(recovery_node SHARED plugins/control/recovery_node.cpp)
