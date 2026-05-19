@@ -1,4 +1,4 @@
 # RMUC test patrol waypoints — friendly half patrol route (auto-snapped)
 # Format: x,y,z per line
-6.385300,3.941700,0.000000
-5.333750,-4.291920,0.000000
+3.941700,6.385300,0.000000
+-4.291920,5.333750,0.000000

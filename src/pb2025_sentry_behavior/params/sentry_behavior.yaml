@@ -86,6 +86,16 @@ pb2025_sentry_behavior_server:
         patrol_preview_points: 2
         action_server_wait_timeout_s: 0.5
 
+      rmuc:
+        csv_waypoints_file: "params/rmuc_waypoints.csv"
+        patrol_csv_file: "params/rmuc_patrol_waypoints.csv"
+        retreat_hp_threshold: 150
+        endgame_time_threshold: 180
+        supply_point:
+          x: -4.30
+          y: -2.00
+          z: 0.0
+
 pb2025_sentry_behavior_client:
   ros__parameters:
     use_sim_time: true
