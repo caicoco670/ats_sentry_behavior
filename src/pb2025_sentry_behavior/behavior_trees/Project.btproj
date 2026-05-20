@@ -5,6 +5,7 @@
     <include path="rmul_2026.xml"/>
     <include path="vision_test.xml"/>
     <include path="rmuc_test.xml"/>
+    <include path="rmuc_test2.xml"/>
     <!-- Description of Node Models (used by Groot) -->
     <TreeNodesModel>
         <Action ID="AdvancePatrolCursor" editable="true">

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+
+  <!--
+    ============================================================
+    decision_rmuc_test2_patrol: 己方半区 CSV 多点巡逻
+    从 CSV 加载路径点 → SendNavThroughPoses 异步穿越 →
+    到达终点后返回 SUCCESS，让上层 ReactiveFallback 重新进入形成循环
+    ============================================================
+  -->
+  <BehaviorTree ID="decision_rmuc_test2_patrol">
+    <Sequence>
+      <LoadCsvWaypoints csv_file="{@decision_rmuc_test2_patrol_csv_file}"
+                        path="{decision_csv_path}"/>
+      <Fallback>
+        <Sequence>
+          <IsPathGoalReached path="{decision_csv_path}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"
+                             current_pose="{@decision_current_pose}"/>
+        </Sequence>
+        <SendNavThroughPoses path="{decision_csv_path}"
+                             current_pose="{@decision_current_pose}"
+                             goal_succeeded="{decision_nav_goal_succeeded}"/>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    decision_rmuc_test2_referee: 裁判系统自主决策核心
+
+    决策优先级 (ReactiveFallback, 高→低):
+      P0: HP == critical → 去补给点
+      默认:               → 己方半区 CSV 巡逻
+
+    ReactiveSequence 保证每个 tick 都重新检查 check_game_start
+    ReactiveFallback 保证条件变化时立即切换行为
+    ============================================================
+  -->
+  <BehaviorTree ID="decision_rmuc_test2_referee">
+    <ReactiveSequence>
+      <SubTree ID="check_game_start"/>
+      <ReactiveFallback>
+        <Sequence>
+          <IsHpBand band="critical"/>
+          <SubTree ID="decision_safe_point"/>
+        </Sequence>
+
+        <SubTree ID="decision_rmuc_test2_patrol"/>
+      </ReactiveFallback>
+    </ReactiveSequence>
+  </BehaviorTree>
+
+  <!--
+    ============================================================
+    rmuc_test2: 根行为树
+
+    运行机制:
+      KeepRunningUntilFailure + ForceSuccess = 永不停止
+      每个 tick: 自旋 + 根据 input_source 选决策分支
+
+    决策来源:
+      - simulation: decision_simulation (复用 rmul_2026)
+      - referee:    decision_rmuc_test2_referee (本树自定义)
+    ============================================================
+  -->
+  <BehaviorTree ID="rmuc_test2">
+    <KeepRunningUntilFailure>
+      <ForceSuccess>
+        <ReactiveSequence>
+          <PublishSpinSpeed spin_speed="{@decision_default_spin_speed}"
+                            duration="0.0"
+                            topic_name="{@decision_spin_topic}"/>
+          <ReactiveFallback>
+            <Sequence>
+              <IsDecisionInputSource source="simulation"/>
+              <SubTree ID="decision_simulation"/>
+            </Sequence>
+
+            <Sequence>
+              <IsDecisionInputSource source="referee"/>
+              <SubTree ID="decision_rmuc_test2_referee"/>
+            </Sequence>
+          </ReactiveFallback>
+        </ReactiveSequence>
+      </ForceSuccess>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+</root>

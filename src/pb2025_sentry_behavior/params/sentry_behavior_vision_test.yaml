@@ -86,6 +86,9 @@ pb2025_sentry_behavior_server:
         patrol_preview_points: 2
         action_server_wait_timeout_s: 0.5
 
+      rmuc_test2:
+        patrol_csv_file: params/rmuc_test2_patrol.csv
+
 pb2025_sentry_behavior_client:
   ros__parameters:
     use_sim_time: true

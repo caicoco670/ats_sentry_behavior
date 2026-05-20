@@ -237,6 +237,10 @@ void SentryBehaviorServer::declareDecisionParameters()
   declare_parameter("decision.rmuc.supply_point.x", 2.77164);
   declare_parameter("decision.rmuc.supply_point.y", 1.40146);
   declare_parameter("decision.rmuc.supply_point.z", 0.0);
+
+  // RMUC test2 专用参数
+  declare_parameter(
+    "decision.rmuc_test2.patrol_csv_file", std::string("params/rmuc_test2_patrol.csv"));
 }
 
 void SentryBehaviorServer::initializeDecisionBlackboard()
@@ -308,6 +312,11 @@ void SentryBehaviorServer::initializeDecisionBlackboard()
   globalBlackboard()->set("decision_rmuc_retreat_hp_threshold", retreat_hp_threshold);
   globalBlackboard()->set("decision_rmuc_endgame_time_threshold", endgame_time_threshold);
   globalBlackboard()->set("decision_rmuc_csv_phase_complete", false);
+
+  // RMUC test2 黑board 初始化
+  std::string rmuc_test2_patrol_csv_file = "params/rmuc_test2_patrol.csv";
+  node()->get_parameter("decision.rmuc_test2.patrol_csv_file", rmuc_test2_patrol_csv_file);
+  globalBlackboard()->set("decision_rmuc_test2_patrol_csv_file", rmuc_test2_patrol_csv_file);
 }
 
 bool SentryBehaviorServer::onGoalReceived(
